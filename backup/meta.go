@@ -10,15 +10,16 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/pd/client"
+	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/oracle"
 )
 
 // Backer backups a TiDB/TiKV cluster.
 type Backer struct {
-	ctx      context.Context
-	pdClient pd.Client
-	pdHTTP   struct {
+	ctx    context.Context
+	db     kv.Storage
+	pdHTTP struct {
 		addrs []string
 		cli   *http.Client
 	}
@@ -26,14 +27,14 @@ type Backer struct {
 
 // NewBacker creates a new Backer.
 func NewBacker(ctx context.Context, pdAddrs string) (*Backer, error) {
-	addrs := strings.Split(pdAddrs, ",")
-	pdClient, err := pd.NewClient(addrs, pd.SecurityOption{})
+	driver := tikv.Driver{}
+	store, err := driver.Open(fmt.Sprintf("tikv://%s", pdAddrs))
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	return &Backer{
-		ctx:      ctx,
-		pdClient: pdClient,
+		ctx:   ctx,
+		store: store,
 		pdHTTP: struct {
 			addrs []string
 			cli   *http.Client
@@ -46,6 +47,7 @@ func NewBacker(ctx context.Context, pdAddrs string) (*Backer, error) {
 
 // GetClusterVersion returns the current cluster version.
 func (backer *Backer) GetClusterVersion() (string, error) {
+	// TODO: maybe add cluster-version api to pd client?
 	var clusterVersionPrefix = "pd/api/v1/config/cluster-version"
 
 	get := func(addr string) (string, error) {
@@ -92,10 +94,11 @@ func (backer *Backer) GetClusterVersion() (string, error) {
 	return "", err
 }
 
-// GetGCSaftPoint returns the current gc safe point.
+// GetGCSafePoint returns the current gc safe point.
 // TODO: Some cluster may not enable distributed GC.
-func (backer *Backer) GetGCSaftPoint() (Timestamp, error) {
-	safePoint, err := backer.pdClient.UpdateGCSafePoint(backer.ctx, 0)
+func (backer *Backer) GetGCSafePoint() (Timestamp, error) {
+	// TODO: add GetGCSafePoint api for pd client
+	safePoint, err := backer.store.pdClient.GetGCSafePoint(backer.ctx)
 	println(safePoint)
 	if err != nil {
 		return Timestamp{}, errors.Trace(err)

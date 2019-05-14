@@ -39,7 +39,7 @@ func (backer *Backer) Backup(interval time.Duration) error {
 		backMeta.Ranges = cps
 
 		// GC safe point
-		sp, err := backer.GetGCSaftPoint()
+		sp, err := backer.GetGCSafePoint()
 		if err != nil {
 			return errors.Trace(err)
 		}
