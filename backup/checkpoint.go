@@ -56,7 +56,7 @@ func (backer *Backer) readIndexForRange(
 	req := &tikvrpc.Request{
 		Type:      tikvrpc.CmdReadIndex,
 		ReadIndex: &kvrpcpb.ReadIndexRequest{},
-		ToLearner: true,
+		ToSlave:   true,
 	}
 
 	regions := 0
@@ -74,7 +74,7 @@ func (backer *Backer) readIndexForRange(
 		if err != nil {
 			return regions, errors.Trace(err)
 		}
-		resp, err := backer.store.SendReq(bo, req, loc.Region, true, tikv.ReadTimeoutMedium)
+		resp, err := backer.store.SendReq(bo, req, loc.Region, tikv.ReadTimeoutMedium)
 		if err != nil {
 			return regions, errors.Trace(err)
 		}

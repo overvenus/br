@@ -11,7 +11,6 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/pd/client"
-	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/oracle"
 )
@@ -19,7 +18,7 @@ import (
 // Backer backups a TiDB/TiKV cluster.
 type Backer struct {
 	ctx      context.Context
-	store    kv.Storage
+	store    tikv.Storage
 	pdClient pd.Client
 	pdHTTP   struct {
 		addrs []string
