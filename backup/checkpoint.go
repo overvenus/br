@@ -3,16 +3,16 @@ package backup
 import (
 	"bytes"
 	"context"
-	"errors"
 
+	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/tikvrpc"
 )
 
 // DoCheckpoint returns a checkpoint.
-func (backer *Backer) DoCheckpoint() ([]*RangeMeta, error) {
-	physical, logical, err := backer.store.pdClient.GetTS(backer.ctx)
+func (backer *Backer) DoCheckpoint(concurrency int) ([]*RangeMeta, error) {
+	physical, logical, err := backer.pdClient.GetTS(backer.ctx)
 
 	checkpoint := Timestamp{
 		Physical: physical - MaxTxnTimeUse,
@@ -22,13 +22,29 @@ func (backer *Backer) DoCheckpoint() ([]*RangeMeta, error) {
 	handler := func(ctx context.Context, r kv.KeyRange) (int, error) {
 		return backer.readIndexForRange(ctx, r.StartKey, r.EndKey)
 	}
+	runner := tikv.NewRangeTaskRunner("read-index-runner", backer.store.(tikv.Storage), concurrency, handler)
 
-	// TODO: update after https://github.com/pingcap/tidb/pull/10379 is merged
-	runner := tikv.NewRangeTaskRunner("read-index-runner", backer.store, concurrency, handler)
-	// Run resolve lock on the whole TiKV cluster. Empty keys means the range is unbounded.
-	err := runner.RunOnRange(ctx, []byte(""), []byte(""))
+	// TODO: support different ranges for different tables' backup
+	ranges := []*kv.KeyRange{
+		&kv.KeyRange{
+			StartKey: []byte(""),
+			EndKey:   []byte(""),
+		},
+	}
 
-	return []*RangeMeta{}, nil
+	metas := make([]*RangeMeta, len(ranges))
+	for _, keyRange := range ranges {
+		err := runner.RunOnRange(backer.ctx, keyRange.StartKey, keyRange.EndKey)
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, &RangeMeta{
+			StartKey:   keyRange.StartKey,
+			EndKey:     keyRange.EndKey,
+			CheckPoint: &checkpoint,
+		})
+	}
+	return metas, nil
 }
 
 func (backer *Backer) readIndexForRange(
@@ -40,6 +56,7 @@ func (backer *Backer) readIndexForRange(
 	req := &tikvrpc.Request{
 		Type:      tikvrpc.CmdReadIndex,
 		ReadIndex: &kvrpcpb.ReadIndexRequest{},
+		ToLearner: true,
 	}
 
 	regions := 0
@@ -57,7 +74,7 @@ func (backer *Backer) readIndexForRange(
 		if err != nil {
 			return regions, errors.Trace(err)
 		}
-		resp, err := backer.store.SendReq(bo, req, loc.Region, tikv.ReadTimeoutMedium)
+		resp, err := backer.store.SendReq(bo, req, loc.Region, true, tikv.ReadTimeoutMedium)
 		if err != nil {
 			return regions, errors.Trace(err)
 		}
