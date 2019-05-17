@@ -16,7 +16,7 @@ const (
 )
 
 // Backup backups a TiDB/TiKV cluster.
-func (backer *Backer) Backup(interval time.Duration) error {
+func (backer *Backer) Backup(interval time.Duration, concurrency int) error {
 	if interval >= GCDefaultLifeTime {
 		return errors.Errorf("Backup interval is too large %v, must <= %v",
 			interval, GCDefaultLifeTime)
@@ -32,7 +32,7 @@ func (backer *Backer) Backup(interval time.Duration) error {
 
 	for {
 		// Check point
-		cps, err := backer.DoCheckpoint()
+		cps, err := backer.DoCheckpoint(concurrency)
 		if err != nil {
 			return errors.Trace(err)
 		}
